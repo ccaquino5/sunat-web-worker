@@ -107,6 +107,8 @@ app.post("/consultar-sunat", async (req, res) => {
     const fecha = normalizeFecha(sunat_fecha_web);
     const importe = normalizeImporte(sunat_total_web);
 
+    await page.waitForTimeout(5000);
+
     const fillFirst = async (selectors, value) => {
       for (const selector of selectors) {
         const locator = page.locator(selector).first();
@@ -117,7 +119,7 @@ app.post("/consultar-sunat", async (req, res) => {
           }
         } catch {}
       }
-      throw new Error(`No se encontró campo para valor: ${value}`);
+      return null;
     };
 
     const selectFirst = async (selectors, value) => {
@@ -130,32 +132,80 @@ app.post("/consultar-sunat", async (req, res) => {
           }
         } catch {}
       }
-      throw new Error(`No se encontró combo para valor: ${value}`);
+      return null;
     };
 
-    await page.waitForTimeout(3000);
+    const visibleInputsMeta = await page.evaluate(() => {
+      const els = Array.from(document.querySelectorAll("input, select, textarea"));
+      return els.map((el, idx) => ({
+        idx,
+        tag: el.tagName,
+        type: el.getAttribute("type"),
+        name: el.getAttribute("name"),
+        id: el.getAttribute("id"),
+        placeholder: el.getAttribute("placeholder"),
+        value: el.value,
+        outer: el.outerHTML.slice(0, 300)
+      }));
+    });
 
-    await fillFirst(
+    console.log("=== INPUTS/SELECTS DETECTADOS ===");
+    console.log(JSON.stringify(visibleInputsMeta, null, 2));
+
+    const textInputs = page.locator(
+      'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="radio"]):not([type="checkbox"])'
+    );
+
+    const fillByIndex = async (index, value) => {
+      const count = await textInputs.count();
+      if (count > index) {
+        const locator = textInputs.nth(index);
+        await locator.fill(String(value));
+        return `textInputIndex:${index}`;
+      }
+      return null;
+    };
+
+    const selects = page.locator("select");
+
+    const selectByIndex = async (index, value) => {
+      const count = await selects.count();
+      if (count > index) {
+        const locator = selects.nth(index);
+        await locator.selectOption(String(value));
+        return `selectIndex:${index}`;
+      }
+      return null;
+    };
+
+    let used;
+
+    // RUC
+    used = await fillFirst(
       [
         'input[name*="numRuc"]',
         'input[id*="ruc"]',
-        'input[name*="ruc"]',
-        'input[type="text"]'
+        'input[name*="ruc"]'
       ],
       ruc_proveedor
     );
+    if (!used) used = await fillByIndex(0, ruc_proveedor);
+    if (!used) throw new Error(`No se encontró campo RUC`);
 
-    await selectFirst(
+    // Tipo comprobante
+    used = await selectFirst(
       [
         'select[name*="codComp"]',
         'select[id*="codComp"]',
-        'select[name*="tipo"]',
-        'select'
+        'select[name*="tipo"]'
       ],
       sunat_tipo_comprobante_web
     );
+    if (!used) used = await selectByIndex(0, sunat_tipo_comprobante_web);
+    if (!used) throw new Error(`No se encontró combo tipo comprobante`);
 
-    await fillFirst(
+    // Serie
+    used = await fillFirst(
       [
         'input[name*="numSerie"]',
         'input[id*="serie"]',
@@ -163,8 +213,11 @@ app.post("/consultar-sunat", async (req, res) => {
       ],
       String(sunat_serie_web).trim()
     );
+    if (!used) used = await fillByIndex(1, String(sunat_serie_web).trim());
+    if (!used) throw new Error(`No se encontró campo serie`);
 
-    await fillFirst(
+    // Número comprobante
+    used = await fillFirst(
       [
         'input[name*="numCpe"]',
         'input[id*="numCpe"]',
@@ -175,8 +228,12 @@ app.post("/consultar-sunat", async (req, res) => {
       ],
       String(sunat_numero_web).trim()
     );
+    if (!used) used = await fillByIndex(2, String(sunat_numero_web).trim());
+    if (!used) used = await fillByIndex(3, String(sunat_numero_web).trim());
+    if (!used) throw new Error(`No se encontró campo para valor: ${sunat_numero_web}`);
 
-    await fillFirst(
+    // Fecha
+    used = await fillFirst(
       [
         'input[name*="fecEmision"]',
         'input[id*="fecEmision"]',
@@ -185,8 +242,12 @@ app.post("/consultar-sunat", async (req, res) => {
       ],
       fecha
     );
+    if (!used) used = await fillByIndex(3, fecha);
+    if (!used) used = await fillByIndex(4, fecha);
+    if (!used) throw new Error(`No se encontró campo fecha`);
 
-    await fillFirst(
+    // Importe
+    used = await fillFirst(
       [
         'input[name*="mtoImporte"]',
         'input[id*="mtoImporte"]',
@@ -195,9 +256,12 @@ app.post("/consultar-sunat", async (req, res) => {
       ],
       importe
     );
+    if (!used) used = await fillByIndex(4, importe);
+    if (!used) used = await fillByIndex(5, importe);
+    if (!used) throw new Error(`No se encontró campo importe`);
 
     const snapshot = await page.locator("body").innerText();
-    console.log("SUNAT PAGE SNAPSHOT:");
+    console.log("=== SUNAT PAGE SNAPSHOT ===");
     console.log(snapshot.slice(0, 4000));
 
     await Promise.all([

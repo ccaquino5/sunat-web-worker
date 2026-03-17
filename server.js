@@ -104,35 +104,98 @@ app.post("/consultar-sunat", async (req, res) => {
     const fecha = normalizeFecha(sunat_fecha_web);
     const importe = normalizeImporte(sunat_total_web);
 
-    await page.fill(
-      'input[name*="numRuc"], input[id*="ruc"], input[name*="ruc"]',
-      String(ruc_proveedor)
+    const fillFirst = async (selectors, value) => {
+      for (const selector of selectors) {
+        const locator = page.locator(selector).first();
+        try {
+          if (await locator.count()) {
+            await locator.fill(String(value));
+            return selector;
+          }
+        } catch {}
+      }
+      throw new Error(`No se encontró campo para valor: ${value}`);
+    };
+
+    const selectFirst = async (selectors, value) => {
+      for (const selector of selectors) {
+        const locator = page.locator(selector).first();
+        try {
+          if (await locator.count()) {
+            await locator.selectOption(String(value));
+            return selector;
+          }
+        } catch {}
+      }
+      throw new Error(`No se encontró combo para valor: ${value}`);
+    };
+
+    await page.waitForTimeout(3000);
+
+    await fillFirst(
+      [
+        'input[name*="numRuc"]',
+        'input[id*="ruc"]',
+        'input[name*="ruc"]',
+        'input[type="text"]'
+      ],
+      ruc_proveedor
     );
 
-    await page.selectOption(
-      'select[name*="codComp"], select[id*="codComp"], select[name*="tipo"]',
-      String(sunat_tipo_comprobante_web)
+    await selectFirst(
+      [
+        'select[name*="codComp"]',
+        'select[id*="codComp"]',
+        'select[name*="tipo"]',
+        'select'
+      ],
+      sunat_tipo_comprobante_web
     );
 
-    await page.fill(
-      'input[name*="numSerie"], input[id*="serie"], input[name*="serie"]',
+    await fillFirst(
+      [
+        'input[name*="numSerie"]',
+        'input[id*="serie"]',
+        'input[name*="serie"]'
+      ],
       String(sunat_serie_web).trim()
     );
 
-    await page.fill(
-      'input[name*="numCpe"], input[id*="numero"], input[name*="numero"]',
+    await fillFirst(
+      [
+        'input[name*="numCpe"]',
+        'input[id*="numCpe"]',
+        'input[id*="comprobante"]',
+        'input[name*="comprobante"]',
+        'input[id*="numero"]',
+        'input[name*="numero"]'
+      ],
       String(sunat_numero_web).trim()
     );
 
-    await page.fill(
-      'input[name*="fecEmision"], input[id*="fecha"], input[name*="fecha"]',
+    await fillFirst(
+      [
+        'input[name*="fecEmision"]',
+        'input[id*="fecEmision"]',
+        'input[id*="fecha"]',
+        'input[name*="fecha"]'
+      ],
       fecha
     );
 
-    await page.fill(
-      'input[name*="mtoImporte"], input[id*="importe"], input[name*="importe"]',
+    await fillFirst(
+      [
+        'input[name*="mtoImporte"]',
+        'input[id*="mtoImporte"]',
+        'input[id*="importe"]',
+        'input[name*="importe"]'
+      ],
       importe
     );
+
+    const snapshot = await page.locator("body").innerText();
+    console.log("SUNAT PAGE SNAPSHOT:");
+    console.log(snapshot.slice(0, 4000));
 
     await Promise.all([
       page.click(

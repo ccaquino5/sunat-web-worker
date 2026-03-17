@@ -32,6 +32,9 @@ app.get("/health", async (_req, res) => {
 });
 
 app.post("/consultar-sunat", async (req, res) => {
+  console.log("=== NUEVA CONSULTA SUNAT ===");
+  console.log("BODY:", JSON.stringify(req.body, null, 2));
+
   const {
     external_id,
     ruc_proveedor,
@@ -231,6 +234,20 @@ app.post("/consultar-sunat", async (req, res) => {
       mensaje = "Comprobante no encontrado o no corresponde en consulta web SUNAT";
     }
 
+    console.log("=== RESULTADO SUNAT ===");
+    console.log(
+      JSON.stringify(
+        {
+          external_id,
+          resultado,
+          estado_comprobante,
+          mensaje
+        },
+        null,
+        2
+      )
+    );
+
     return res.json({
       ok: true,
       external_id,
@@ -240,6 +257,9 @@ app.post("/consultar-sunat", async (req, res) => {
       detalle
     });
   } catch (error) {
+    console.error("=== ERROR SUNAT ===");
+    console.error(error);
+
     return res.status(500).json({
       ok: false,
       external_id,

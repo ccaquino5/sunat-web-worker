@@ -135,19 +135,6 @@ app.post("/consultar-sunat", async (req, res) => {
       return null;
     };
 
-    const clickFirst = async (selectors) => {
-      for (const selector of selectors) {
-        const locator = page.locator(selector).first();
-        try {
-          if (await locator.count()) {
-            await locator.click();
-            return selector;
-          }
-        } catch {}
-      }
-      throw new Error("No se encontró botón Buscar/Consultar");
-    };
-
     const visibleInputsMeta = await page.evaluate(() => {
       const els = Array.from(document.querySelectorAll("input, select, textarea"));
       return els.map((el, idx) => ({
@@ -166,7 +153,7 @@ app.post("/consultar-sunat", async (req, res) => {
     console.log(JSON.stringify(visibleInputsMeta, null, 2));
 
     const textInputs = page.locator(
-      'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="radio"]):not([type="checkbox"])'
+      'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="Button"]):not([type="radio"]):not([type="checkbox"])'
     );
 
     const fillByIndex = async (index, value) => {
@@ -198,7 +185,8 @@ app.post("/consultar-sunat", async (req, res) => {
       [
         'input[name*="numRuc"]',
         'input[id*="ruc"]',
-        'input[name*="ruc"]'
+        'input[name*="ruc"]',
+        'input[name="num_ruc"]'
       ],
       ruc_proveedor
     );
@@ -210,19 +198,32 @@ app.post("/consultar-sunat", async (req, res) => {
       [
         'select[name*="codComp"]',
         'select[id*="codComp"]',
-        'select[name*="tipo"]'
+        'select[name*="tipo"]',
+        'select[name="tipocomprobante"]'
       ],
       sunat_tipo_comprobante_web
     );
     if (!used) used = await selectByIndex(0, sunat_tipo_comprobante_web);
     if (!used) throw new Error("No se encontró combo tipo comprobante");
 
+    // Tipo de documento receptor: SIN DOCUMENTO (-)
+    used = await selectFirst(
+      [
+        'select[name="cod_docide"]',
+        'select[id="cod_docide"]'
+      ],
+      "-"
+    );
+    if (!used) used = await selectByIndex(1, "-");
+    if (!used) console.log("No se pudo setear cod_docide en '-'");
+
     // Serie
     used = await fillFirst(
       [
         'input[name*="numSerie"]',
         'input[id*="serie"]',
-        'input[name*="serie"]'
+        'input[name*="serie"]',
+        'input[name="num_serie"]'
       ],
       String(sunat_serie_web).trim()
     );
@@ -281,16 +282,37 @@ app.post("/consultar-sunat", async (req, res) => {
     console.log("=== SUNAT PAGE SNAPSHOT ===");
     console.log(snapshot.slice(0, 4000));
 
-    await Promise.all([
-      clickFirst([
-        'input[name="wacepta"]',
-        'input[value="Buscar"]',
-        'input[type="Button"]',
-        'button:has-text("Buscar")',
-        'button:has-text("Consultar")'
-      ]),
-      page.waitForLoadState("networkidle", { timeout: 120000 }).catch(() => {})
-    ]);
+    // Click robusto: primero intenta la función JS de la página
+    const clickedByScript = await page.evaluate(() => {
+      try {
+        if (typeof window.opcGrabar === "function") {
+          window.opcGrabar();
+          return "opcGrabar()";
+        }
+
+        const btn =
+          document.querySelector('input[name="wacepta"]') ||
+          document.querySelector('input[value="Buscar"]') ||
+          document.querySelector('input[type="Button"]');
+
+        if (btn) {
+          btn.click();
+          return "dom-click";
+        }
+
+        return null;
+      } catch (e) {
+        return `error:${e.message}`;
+      }
+    });
+
+    console.log("=== CLICK METHOD ===", clickedByScript);
+
+    if (!clickedByScript) {
+      throw new Error("No se encontró botón Buscar/Consultar");
+    }
+
+    await page.waitForTimeout(8000);
 
     const bodyText = await page.locator("body").innerText();
     const normalized = bodyText.toUpperCase();
@@ -298,7 +320,7 @@ app.post("/consultar-sunat", async (req, res) => {
     let resultado = "ERROR_CONSULTA";
     let estado_comprobante = "OBSERVADO";
     let mensaje = "No se pudo interpretar la respuesta de SUNAT";
-    const detalle = bodyText.slice(0, 2000);
+    const detalle = bodyText.slice(0, 3000);
 
     if (
       normalized.includes("ACEPTADO") ||
